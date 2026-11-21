@@ -1,0 +1,14 @@
+// Integration verification for the Karkain-Event public API.
+import events
+
+func main() {
+    let e = new_events()
+    e = add_handler(e, "order_placed", "audit")
+    e = add_handler(e, "order_placed", "notify")
+    assert_eq(handler_count(e, "order_placed"), 2)
+    println(describe_subscription(e, "order_placed"))
+
+    let log = deliver(e, new_log(), "order_placed")
+    assert_eq(log_size(log), 2)
+    println("delivered=" + str(log_size(log)))
+}

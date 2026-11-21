@@ -1,0 +1,14 @@
+// Karkain-Event runnable example: register handlers and deliver events.
+import events
+
+func main() {
+    let e = new_events()
+    e = add_handler(e, "saved", "logger")
+    e = add_handler(e, "saved", "indexer")
+    e = add_handler(e, "deleted", "logger")
+
+    println(describe_subscription(e, "saved"))
+    let log = deliver(e, new_log(), "saved")
+    println("delivered=" + str(log_size(log)))
+    println("last=" + last_event(log))
+}

@@ -1,0 +1,7 @@
+name = "karkain-event"
+version = "0.1.0-dev"
+description = "Event subscription and dispatch model for Karkain"
+license = "MIT"
+targets = ["native"]
+
+[dependencies]
