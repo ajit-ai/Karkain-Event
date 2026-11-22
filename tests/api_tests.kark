@@ -53,3 +53,91 @@ func test_describe_subscription() {
     assert_eq(describe_subscription(e, "created"), "created:handlers=2")
     assert_eq(describe_subscription(e, "none"), "none:handlers=0")
 }
+
+// --- Phase 2 regression ---
+
+func test_phase1_regression() {
+    let e = add_handler(add_handler(new_events(), "created", "audit"), "created", "notify")
+    assert_eq(handler_count(e, "created"), 2)
+    let log = deliver(e, new_log(), "created")
+    assert_eq(len(log), 2)
+    assert_eq(last_event(log), "created")
+}
+
+// --- Phase 2 additions ---
+
+func test_event_definitions() {
+    let d = new_event_def("created", "domain", "v1")
+    assert_eq(event_def_name(d), "created")
+    assert_eq(event_def_kind(d), "domain")
+    assert_eq(event_def_version(d), "v1")
+    assert(validate_event_def(d))
+    assert(validate_event_def(new_event_def("", "domain", "v1")) == false)
+}
+
+func test_envelopes() {
+    let e = new_envelope(1, "created", "payload", "corr-1")
+    assert_eq(envelope_event(e), "created")
+    assert_eq(envelope_payload(e), "payload")
+    assert_eq(envelope_correlation(e), "corr-1")
+}
+
+func test_subscription_lifecycle() {
+    let s = subscribe_topic(subscribe_topic(new_subs(), "orders", "a"), "orders", "b")
+    assert_eq(len(topic_subscribers(s, "orders")), 2)
+    assert(is_subscribed(s, "orders", "a"))
+    assert(is_subscribed(s, "orders", "none") == false)
+    let removed = unsubscribe_topic(s, "orders", "a")
+    assert_eq(len(topic_subscribers(removed, "orders")), 1)
+    assert_eq(len(topic_subscribers(s, "orders")), 2)
+}
+
+func test_routing_and_filtering() {
+    assert(route_matches("orders.created", "orders.created"))
+    assert(route_matches("*", "anything"))
+    assert(route_matches("orders.*", "users.created") == false)
+    assert(filter_event("hello world", "world"))
+    assert(filter_event("hello", ""))
+    assert(filter_event("hello", "xyz") == false)
+}
+
+func test_ordering_and_delivery_contract() {
+    assert_eq(order_mode(new_order_policy("FIFO")), "FIFO")
+    assert_eq(delivery_contract("sync"), "event.deliver.sync")
+    assert_eq(delivery_contract("async"), "event.deliver.async")
+}
+
+func test_delivery_isolation() {
+    let s = subscribe_topic(subscribe_topic(subscribe_topic(new_subs(), "orders", "a"), "orders", "failing"), "orders", "b")
+    let log = deliver_isolated(s, [], "orders", "x")
+    assert_eq(len(log), 2)
+    assert_eq(log[0], "orders>a>x")
+    assert_eq(len(deliver_isolated(new_subs(), [], "orders", "x")), 0)
+}
+
+func test_retry_and_dead_letters() {
+    let r = new_retry(3)
+    assert(event_should_retry(r, 2))
+    assert(event_should_retry(r, 3) == false)
+    let d = dead_letter_event(dead_letter_event(new_dead_letters(), "e1", "timeout"), "e2", "invalid")
+    assert_eq(dead_letter_count(d), 2)
+    assert_eq(d[1], "timeout")
+}
+
+func test_correlation_and_aggregation() {
+    assert_eq(correlation_of(new_correlation("corr")), "corr")
+    let a = aggregate_add(aggregate_add(new_aggregation("key")))
+    assert_eq(aggregate_count(a), 2)
+    assert_eq(aggregate_count(new_aggregation("key")), 0)
+}
+
+func test_provider_and_shutdown() {
+    let b = new_broker("test", "publish,subscribe")
+    assert(broker_supports(b, "publish"))
+    assert(broker_supports(b, "durable") == false)
+    assert_eq(broker_contract(), "provider.broker.publish/subscribe/ack")
+    assert(event_drains(shutdown_policy(true)))
+    assert(event_drains(shutdown_policy(false)) == false)
+    assert_eq(messaging_contract(), "messaging.publish(envelope)")
+    assert_eq(observability_contract(), "observability.event(event,kind,status)")
+}

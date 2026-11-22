@@ -1,0 +1,17 @@
+// Karkain-Event Phase 2 example: envelopes, routing and isolated delivery.
+import events
+
+func main() {
+    let def = new_event_def("created", "domain", "v1")
+    let envelope = new_envelope(1, event_def_name(def), "payload", "corr-1")
+    println("event=" + envelope_event(envelope))
+
+    let subs = subscribe_topic(subscribe_topic(new_subs(), "orders", "billing"), "orders", "audit")
+    let log = deliver_isolated(subs, [], "orders", envelope_payload(envelope))
+    println("delivered=" + str(len(log)))
+    println("wildcard=" + str(route_matches("*", "orders")))
+
+    let agg = aggregate_add(new_aggregation("orders"))
+    println("count=" + str(aggregate_count(agg)))
+    println("retry=" + str(event_should_retry(new_retry(3), 2)))
+}

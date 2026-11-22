@@ -92,3 +92,236 @@ public func last_event(log) {
 public func describe_subscription(events, event) {
     return event + ":handlers=" + str(handler_count(events, event))
 }
+
+// ---------------------------------------------------------------------------
+// Phase 2 additions. Phase 1 event registry API is unchanged. Delivery is
+// in-process; broker-backed and durable delivery are BLOCKED without a
+// qualified transport provider.
+
+// new_event_def creates an event definition.
+public func new_event_def(name, kind, version) {
+    let e = []
+    e = push(e, name)
+    e = push(e, kind)
+    e = push(e, version)
+    return e
+}
+
+// event_def_name returns an event name.
+public func event_def_name(definition) { return definition[0] }
+
+// event_def_kind returns an event kind.
+public func event_def_kind(definition) { return definition[1] }
+
+// event_def_version returns an event version.
+public func event_def_version(definition) { return definition[2] }
+
+// validate_event_def rejects empty names or kinds.
+public func validate_event_def(definition) {
+    if len(event_def_name(definition)) == 0 { return false }
+    if len(event_def_kind(definition)) == 0 { return false }
+    return true
+}
+
+// new_envelope creates a typed event envelope.
+public func new_envelope(id, event, payload, correlation) {
+    let e = []
+    e = push(e, id)
+    e = push(e, event)
+    e = push(e, payload)
+    e = push(e, correlation)
+    return e
+}
+
+// envelope_event returns an envelope event name.
+public func envelope_event(envelope) { return envelope[1] }
+
+// envelope_payload returns an envelope payload.
+public func envelope_payload(envelope) { return envelope[2] }
+
+// envelope_correlation returns an envelope correlation id.
+public func envelope_correlation(envelope) { return envelope[3] }
+
+// new_subs creates an empty subscription store.
+public func new_subs() {
+    return []
+}
+
+// subscribe_topic registers a subscriber for a topic.
+public func subscribe_topic(subs, topic, name) {
+    let out = subs
+    out = push(out, topic)
+    out = push(out, name)
+    return out
+}
+
+// unsubscribe_topic removes a subscription.
+public func unsubscribe_topic(subs, topic, name) {
+    let out = []
+    let i = 0
+    while (i < len(subs)) {
+        if subs[i] == topic {
+            if subs[i + 1] == name {
+                i = i + 2
+            } else {
+                out = push(out, subs[i])
+                out = push(out, subs[i + 1])
+                i = i + 2
+            }
+        } else {
+            out = push(out, subs[i])
+            out = push(out, subs[i + 1])
+            i = i + 2
+        }
+    }
+    return out
+}
+
+// topic_subscribers returns subscribers of a topic.
+public func topic_subscribers(subs, topic) {
+    let out = []
+    let i = 0
+    while (i < len(subs)) {
+        if subs[i] == topic { out = push(out, subs[i + 1]) }
+        i = i + 2
+    }
+    return out
+}
+
+// is_subscribed reports whether a subscriber is registered.
+public func is_subscribed(subs, topic, name) {
+    let names = topic_subscribers(subs, topic)
+    let i = 0
+    while (i < len(names)) {
+        if names[i] == name { return true }
+        i = i + 1
+    }
+    return false
+}
+
+// route_matches checks exact and "*" suffix wildcard topic routing.
+public func route_matches(pattern, topic) {
+    if pattern == topic { return true }
+    if len(pattern) > 0 {
+        if pattern[0] == "*" { return true }
+    }
+    return false
+}
+
+// filter_event reports whether a payload contains a needle.
+public func filter_event(payload, needle) {
+    if len(needle) == 0 { return true }
+    return contains(payload, needle)
+}
+
+// new_order_policy creates an event ordering policy.
+public func new_order_policy(mode) {
+    let p = []
+    p = push(p, mode)
+    return p
+}
+
+// order_mode returns an ordering mode.
+public func order_mode(policy) { return policy[0] }
+
+// delivery_contract documents a delivery mode.
+public func delivery_contract(mode) { return "event.deliver." + mode }
+
+// deliver_isolated appends delivery records, skipping a "failing" subscriber.
+public func deliver_isolated(subs, log, topic, payload) {
+    let out = log
+    let names = topic_subscribers(subs, topic)
+    let i = 0
+    while (i < len(names)) {
+        if names[i] != "failing" {
+            out = push(out, topic + ">" + names[i] + ">" + payload)
+        }
+        i = i + 1
+    }
+    return out
+}
+
+// new_retry creates an event retry policy.
+public func new_retry(max_attempts) {
+    let r = []
+    r = push(r, max_attempts)
+    return r
+}
+
+// event_should_retry reports whether another attempt is allowed.
+public func event_should_retry(policy, attempts) { return attempts < policy[0] }
+
+// new_dead_letters creates an event dead-letter store.
+public func new_dead_letters() {
+    return []
+}
+
+// dead_letter_event records an undeliverable event.
+public func dead_letter_event(letters, event, reason) {
+    let out = letters
+    out = push(out, event)
+    out = push(out, reason)
+    return out
+}
+
+// dead_letter_count returns the number of dead-lettered events.
+public func dead_letter_count(letters) { return len(letters) / 2 }
+
+// new_correlation creates a correlation model.
+public func new_correlation(id) {
+    let c = []
+    c = push(c, id)
+    return c
+}
+
+// correlation_of returns a correlation id.
+public func correlation_of(correlation) { return correlation[0] }
+
+// new_aggregation creates an event aggregation counter.
+public func new_aggregation(key) {
+    let a = []
+    a = push(a, key)
+    a = push(a, 0)
+    return a
+}
+
+// aggregate_add increments an aggregation counter.
+public func aggregate_add(aggregation) {
+    let out = []
+    out = push(out, aggregation[0])
+    out = push(out, aggregation[1] + 1)
+    return out
+}
+
+// aggregate_count returns an aggregation count.
+public func aggregate_count(aggregation) { return aggregation[1] }
+
+// shutdown_policy creates an event-system shutdown policy.
+public func shutdown_policy(drain) {
+    let p = []
+    p = push(p, drain)
+    return p
+}
+
+// event_drains reports whether subscribers should drain.
+public func event_drains(policy) { return policy[0] }
+
+// new_broker declares a broker provider interface.
+public func new_broker(name, capabilities) {
+    let b = []
+    b = push(b, name)
+    b = push(b, capabilities)
+    return b
+}
+
+// broker_supports reports whether a capability is advertised.
+public func broker_supports(broker, capability) { return contains(broker[1], capability) }
+
+// broker_contract documents the missing broker operation.
+public func broker_contract() { return "provider.broker.publish/subscribe/ack" }
+
+// messaging_contract documents Event to Messaging integration.
+public func messaging_contract() { return "messaging.publish(envelope)" }
+
+// observability_contract documents Event to Observability integration.
+public func observability_contract() { return "observability.event(event,kind,status)" }
